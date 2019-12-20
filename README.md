@@ -1,2 +1,2 @@
 # fgdc
-Python tools for manipulating FGDC metadata
+Python script for enhancing FGDC metadata from a data file
