@@ -28,10 +28,10 @@ def enhance(xmlfilename, datafilename):
           print('error parsing xml file {}'.format(xmlfilename))
 
     tree = _update_geoform(tree, ext)
-    #tree = _update_onlink(tree, d)
-    #tree = _update_bounding(tree, d)
-    #tree = _update_category(tree, d)
-    #tree = _update_browse(tree, d)
+    #tree = _update_onlink(tree, d) -- only when adding to CUGIR
+    #tree = _update_bounding(tree, d) -- fiona
+    tree = _update_category(tree)
+    #tree = _update_browse(tree, d) -- only when adding to CUGIR
     #tree = _update_spdoinfo(tree, d)
     # TODO normalize <spref> (coordinate system)
     #tree = _update_distinfo(tree, d)
@@ -39,7 +39,7 @@ def enhance(xmlfilename, datafilename):
 
     # prettify and return the enhanced xml string
     doctype = '<!DOCTYPE metadata SYSTEM "http://fgdc.gov/metadata/fgdc-std-001-1998.dtd">'
-    xml = etree.tostring(tree, pretty_print=True, encoding='unicode', doctype=doctype)
+    xml = etree.tostring(tree, encoding='unicode', pretty_print=True, doctype=doctype)
     return xml
 
 
@@ -58,7 +58,8 @@ def _insert_after_last(tree, xmlstr, tags):
 
     existing = tree.xpath(tags)
     assert len(existing) > 0, 'FGDC metadata lacks one of {}'.format(tags)
-    newnode = etree.fromstring(xmlstr)
+    parser = etree.XMLParser(remove_blank_text=True)
+    newnode = etree.fromstring(xmlstr, parser=parser)
     existing[-1].addnext(newnode)
     return tree
 
@@ -70,7 +71,7 @@ def _update_geoform(tree, ext):
         'tif': 'raster digital data',
         'e00': 'vector digital data',
         'geojson': 'vector digital data'
-    }
+        }
     g = ext2geoform.get(ext, None)
     if g is None:
         print('fgdc: WARNING: unable to determine geoform for file type {}'.format(ext))
@@ -85,20 +86,6 @@ def _update_geoform(tree, ext):
 
     _insert_after_last(citeinfo, '<geoform>{}</geoform>'.format(g), 'title|edition')
 
-    return tree
-
-
-def _update_onlink(tree, dataset):
-    """Update idinfo//onlink with CUGIR dataset url."""
-    citeinfo = tree.find('./idinfo/citation/citeinfo')
-
-    # remove any existing CUGIR onlink (but keep any non-CUGIR onlink)
-    _remove_path(citeinfo, './onlink[contains(text(), "cugir")]')
-    # remove any blank onlinks
-    _remove_path(citeinfo, './onlink[string-length(normalize-space(text()))=0]')
-
-    onlink = '<onlink>{}catalog/cugir-{}</onlink>'.format(config.geoblacklight_base, dataset.id)
-    _insert_after_last(citeinfo, onlink, 'title|edition|geoform|serinfo|pubinfo|othercit')
     return tree
 
 
@@ -133,7 +120,7 @@ def _update_bounding(tree, dataset):
     return tree
 
 
-def _update_category(tree, dataset):
+def _update_category(tree):
     """Add or update CUGIR categories (human-readable variant of ISO Topic Category)."""
     t2c = {
         "farming": "agriculture",
@@ -164,14 +151,15 @@ def _update_category(tree, dataset):
     themekeys = tree.findall('.//themekey')
     categories = []
     for t in themekeys:
-        t = t.text.lower()
-        if t in t2c:
-            c = t2c[t]
-            if not c in categories:
-              categories.append(c)
+        c = t2c.get(t.text.lower(), None)
+        if c and not c in categories:
+            categories.append(c)
+
+    # remove any existing CUGIR Category -- TODO reconsider this
     _remove_path(tree, './/theme[themekt/text()="CUGIR Category"]')
+
     if len(categories) == 0:
-        print('warning: metadata has no CUGIR categories')
+        print('warning: unable to determine CUGIR category')
     else:
         themekeys = '\n'.join(["<themekey>{}</themekey>".format(c) for c in categories])
         theme = """

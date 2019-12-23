@@ -48,10 +48,6 @@
         <themekt>ISO 19115 Topic Category</themekt>
         <themekey>biota</themekey>
       </theme>
-      <theme>
-        <themekt>CUGIR Category</themekt>
-        <themekey>biology</themekey>
-      </theme>
       <place>
         <placekt>LCSH</placekt>
         <placekey>Cayuga Heights (N.Y.)</placekey>
