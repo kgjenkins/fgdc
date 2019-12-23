@@ -8,6 +8,7 @@ from collections import OrderedDict
 from io import StringIO
 import fiona
 import fiona.crs
+from pyproj import Transformer
 import rasterio
 import requests
 from lxml import etree
@@ -29,10 +30,11 @@ def enhance(xmlfilename, datafilename):
 
     tree = _update_geoform(tree, ext)
     #tree = _update_onlink(tree, d) -- only when adding to CUGIR
-    #tree = _update_bounding(tree, d) -- fiona
     tree = _update_category(tree)
     #tree = _update_browse(tree, d) -- only when adding to CUGIR
-    #tree = _update_spdoinfo(tree, d)
+    tree = _update_spdoinfo(tree, ext, datafilename)
+    #tree = _update_bounding(tree, d) -- included in _update_spdoinfo
+
     # TODO normalize <spref> (coordinate system)
     #tree = _update_distinfo(tree, d)
     #tree = _update_metainfo(tree)
@@ -86,37 +88,6 @@ def _update_geoform(tree, ext):
 
     _insert_after_last(citeinfo, '<geoform>{}</geoform>'.format(g), 'title|edition')
 
-    return tree
-
-
-def _update_bounding(tree, dataset):
-    """Update spdom/bounding with WGS84 bounds derived from geoserver."""
-    bbox = dataset.bbox()
-    if bbox is None:
-        # may happen for e00, etc.
-        return tree
-
-    _remove_path(tree, './idinfo/spdom')
-
-    # make sure bbox sides are at least .001
-    # (which decreases preview map zoom to a visible level)
-    if (bbox[2] - bbox[0]) < 0.001:
-        bbox[0] -= 0.0005
-        bbox[2] += 0.0005
-    if (bbox[3] - bbox[1]) < 0.001:
-        bbox[1] -= 0.0005
-        bbox[3] += 0.0005
-
-    spdom = """
-        <spdom>
-          <bounding>
-            <westbc>{}</westbc>
-            <eastbc>{}</eastbc>
-            <northbc>{}</northbc>
-            <southbc>{}</southbc>
-          </bounding>
-        </spdom>""".format(bbox[0], bbox[2], bbox[3], bbox[1]) # note the order!
-    _insert_after_last(tree.find('idinfo'), spdom, 'status')
     return tree
 
 
@@ -184,23 +155,25 @@ def _update_browse(tree, d):
         _insert_after_last(tree.find('idinfo'), browse, 'keywords|accconst|useconst|ptcontac')
     return tree
 
-def _update_spdoinfo(tree, d):
+def _update_spdoinfo(tree, ext, datafilename):
     """Update spdoinfo (geomtype, raster/vector)"""
     # handle different data formats
-    if d.ext == 'shp':
-        return _update_vector_spdoinfo(tree, d)
-    elif d.ext == 'tif':
-        return _update_raster_spdoinfo(tree, d)
+    if ext in 'shp e00 geojson'.split(' '):
+        print('updating vector spdoinfo')
+        return _update_vector_spdoinfo(tree, datafilename)
+    elif ext in 'tif'.split(' '):
+        print('updating raster spdoinfo')
+        return _update_raster_spdoinfo(tree, datafilename)
     else:
         return tree
 
 
-def _update_vector_spdoinfo(tree, d):
+def _update_vector_spdoinfo(tree, datafilename):
     """Update spdoinfo for vector datasets, via fiona."""
     try:
-        fionasource = fiona.open(d.maindata)
+        fionasource = fiona.open(datafilename)
     except:
-        print('fiona error trying to open {}'.format(d.maindata))
+        print('fiona error trying to open {}'.format(datafilename))
         return tree
 
     # get geometry type and convert to FGDC term as necessary
@@ -225,16 +198,22 @@ def _update_vector_spdoinfo(tree, d):
         </ptvctinf>
       </spdoinfo>"""
     _insert_after_last(tree.getroot(), spdoinfo, 'idinfo|dataqual')
+
+    tree = _update_bounding(tree, fionasource)
     return tree
 
 
-def _update_raster_spdoinfo(tree, d):
-    """Update spdoinfo for raster datasets, via geoserver."""
-    # TODO get dimensions of original version in s3 .zip
-    #      because geoserver version is reprojected
-    r = rasterio.open(d.maindata)
-    cols = r.width
-    rows = r.height
+def _update_raster_spdoinfo(tree, datafilename):
+    """Update spdoinfo for raster datasets, via fiona."""
+    try:
+        rasteriosource = rasterio.open(datafilename)
+    except:
+        print('rasterio error trying to open {}'.format(datafilename))
+        return tree
+
+    cols = rasteriosource.width
+    rows = rasteriosource.height
+
     _remove_path(tree, './spdoinfo')
     spdoinfo = """
       <spdoinfo>
@@ -246,6 +225,49 @@ def _update_raster_spdoinfo(tree, d):
         </rastinfo>
       </spdoinfo>""".format(rows, cols)
     _insert_after_last(tree.getroot(), spdoinfo, 'idinfo|dataqual')
+
+    tree = _update_bounding(tree, rasteriosource)
+
+    return tree
+
+
+def _update_bounding(tree, source):
+    """Update spdom/bounding with WGS84 bounds via fiona/rasterio (source)."""
+    bounds = source.bounds
+    print(bounds)
+
+    # convert bounds to EPSG:4326 as necessary
+    crs = source.crs
+    if crs['init'] != 'epsg:4326':
+        t = Transformer.from_crs(crs, 4326, always_xy=True)
+        ws = t.transform(bounds[0], bounds[1])
+        en = t.transform(bounds[2], bounds[3])
+        print(ws, en)
+        bounds = (*ws, *en)
+
+    print(bounds)
+
+    _remove_path(tree, './idinfo/spdom')
+
+    # make sure bbox sides are at least .001
+    # (which will force preview map zoom to a visible level)
+    if (bounds[2] - bounds[0]) < 0.001:
+        bounds[0] -= 0.0005
+        bounds[2] += 0.0005
+    if (bounds[3] - bounds[1]) < 0.001:
+        bounds[1] -= 0.0005
+        bounds[3] += 0.0005
+
+    spdom = """
+        <spdom>
+          <bounding>
+            <westbc>{}</westbc>
+            <eastbc>{}</eastbc>
+            <northbc>{}</northbc>
+            <southbc>{}</southbc>
+          </bounding>
+        </spdom>""".format(bounds[0], bounds[2], bounds[3], bounds[1]) # note the fgdc order!
+    _insert_after_last(tree.find('idinfo'), spdom, 'status')
     return tree
 
 

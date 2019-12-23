@@ -28,14 +28,6 @@
       <progress>Complete</progress>
       <update>As needed</update>
     </status>
-    <spdom>
-      <bounding>
-        <westbc>-76.502581</westbc>
-        <eastbc>-76.476039</eastbc>
-        <northbc>42.47767</northbc>
-        <southbc>42.456187</southbc>
-      </bounding>
-    </spdom>
     <keywords>
       <theme>
         <themekt>none</themekt>
@@ -93,15 +85,6 @@
       </procstep>
     </lineage>
   </dataqual>
-  <spdoinfo>
-    <direct>Vector</direct>
-    <ptvctinf>
-      <sdtsterm>
-        <sdtstype>Point</sdtstype>
-        <ptvctcnt>2851</ptvctcnt>
-      </sdtsterm>
-    </ptvctinf>
-  </spdoinfo>
   <spref>
     <horizsys>
       <geograph>
