@@ -64,28 +64,27 @@ def _insert_after_last(tree, xmlstr, tags):
 
 
 def _update_geoform(tree, ext):
-    """Add geoform based on the data filetype, if it doesn't already exist."""
-    citeinfo = tree.find('./idinfo/citation/citeinfo')
-    geoform = citeinfo.find('geoform')
-    if geoform is not None:
-        if geoform.text == 'vector digital data' or geoform.text == 'raster digital data':
-            # already have a valid geoform
-            return tree
+    """Set geoform based on the data filetype"""
     ext2geoform = {
-            'shp': 'vector digital data',
-            'tif': 'raster digital data',
-            'e00': 'vector digital data',
-            'geojson': 'vector digital data'
-            }
-    if ext in ext2geoform:
-        g = ext2geoform[ext]
-    else:
-        print('fgdc: WARNING not sure what geoform to assign for file type {}'.format(d.ext))
+        'shp': 'vector digital data',
+        'tif': 'raster digital data',
+        'e00': 'vector digital data',
+        'geojson': 'vector digital data'
+    }
+    g = ext2geoform.get(ext, None)
+    if g is None:
+        print('fgdc: WARNING: unable to determine geoform for file type {}'.format(ext))
         return tree
 
+    citeinfo = tree.find('./idinfo/citation/citeinfo')
+    geoform = citeinfo.find('geoform')
+
+    # remove any existing geoform
     if geoform is not None:
         geoform.getparent().remove(geoform)
+
     _insert_after_last(citeinfo, '<geoform>{}</geoform>'.format(g), 'title|edition')
+
     return tree
 
 
