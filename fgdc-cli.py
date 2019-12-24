@@ -40,7 +40,7 @@ argparser.add_argument(
 args = argparser.parse_args()
 
 xml = fgdc.enhance(args.xml.read(), args.data)
-args.output.write(xml)
+args.out.write(xml)
 
-if (args.outputname != '<stdout>'):
-    print('Enhanced xml written to file {}'.format(args.output.name))
+if (args.out.name != '<stdout>'):
+    print('Enhanced xml written to file {}'.format(args.out.name))
